@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <title>Параметры погоды</title>
+
+    <div class="message is-link">
+      <div class="message-header">
+        <p>Текущая погода</p>
+        <button class="delete is-small" onclick="clearInfo(0)"></button>
+      </div>
+      <div class="message-body" id="log0">
+      </div>
+    </div>
+    <button class="button is-block is-link is-clipped is-large is-fullwidth" onclick="sendInfo(0)">Показать текущую погоду</button>
+
+    <br>
+
+    <div class="message is-link">
+      <div class="message-header">
+        <p>Предсказание погоды</p>
+        <button class="delete is-small" onclick="clearInfo(1)"></button>
+      </div>
+      <div class="message-body" id="log1">
+      </div>
+    </div>
+    <div class="field">
+      <div class="control">
+          <input class="input is-large" type="text" name="text" placeholder="Количество часов" id="text">
+      </div>
+    </div>
+    <button class="button is-block is-link is-clipped is-large is-fullwidth" onclick="sendInfo(1)">Предсказать погоду</button>
+    <br>
+    <button class="button is-block is-link is-clipped is-large is-fullwidth" onclick="clearInfo(0); clearInfo(1);">Очистить всё</button>
+
+
+    <script>
+      const log = (text='', color='black', i) => {
+        document.getElementById('log' + i).innerHTML += `<span style="color: ${color}">${text}</span><br>`;
+      };
+
+      function clearInfo(i) {
+        const div = document.getElementById('log' + i);
+        while(div.firstChild) {
+          div.removeChild(div.firstChild);
+        }
+      }
+
+      const socket = new WebSocket('ws://' + location.host + '/echo');
+      socket.addEventListener('message', ev => {
+        const i = Number(ev.data[0]);
+        log('<<< ' + ev.data.substring(2), 'blue', i);
+      });
+
+      function sendInfo(i) {
+        const textField = document.getElementById('text');
+        if(i == 0) {
+          log('>>> Показать текущую погоду', 'red', i);
+          socket.send('weather_current');
+        }
+        else {
+          let num = Number(textField.value);
+          if(Number.isInteger(num) & textField.value !== '') {
+            log('>>> Предсказать погоду через ' + Number(textField.value) + ' ч.', 'red', i);
+            socket.send(Number(textField.value));
+          }
+          else {
+            log('>>> Предсказать погоду через ? ч.', 'red', i);
+            log('<<< Неправильный ввод количества времени', 'blue', i);
+          }
+        }
+        textField.value = '';
+      }
+    </script>
+{% endblock %}

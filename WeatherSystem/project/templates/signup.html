@@ -1,0 +1,55 @@
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script>
+    function delete_flash(flash){
+        $(flash).parent().remove()
+    }
+</script>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="notification is-danger">
+    <button class="delete is-large" onclick="delete_flash(this)"></button>
+    {% if messages[0][0] == "wrong_user" %}
+    {{ messages[0][1] }} Перейти на <a href="{{ url_for('login') }}">страницу входа</a>.
+    {% else %}
+    <ul>
+        {%- for category, message in messages %}
+        <li>{{ message }}</li>
+        {% endfor -%}
+    </ul>
+    {% endif %}
+</div>
+{% endif %}
+{% endwith %}
+
+{% extends "base.html" %}
+
+{% block content %}
+<form method="POST" action="/signup">
+<div class="column is-4 is-offset-4">
+    <h3 class="title">Регистрация</h3>
+    <div class="box">
+        <form method="POST" action="/signup">
+            <div class="field">
+                <div class="control">
+                    <input class="input is-large" type="text" name="signup_code" placeholder="Кодовое слово" autofocus="">
+                </div>
+            </div>
+
+            <div class="field">
+                <div class="control">
+                    <input class="input is-large" type="text" name="login" placeholder="Логин">
+                </div>
+            </div>
+
+            <div class="field">
+                <div class="control">
+                    <input class="input is-large" type="password" name="password" placeholder="Пароль">
+                </div>
+            </div>
+
+            <button class="button is-large is-clipped is-fullwidth is-block is-link">Зарегистрироваться</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

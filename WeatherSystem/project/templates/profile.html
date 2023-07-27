@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="title">
+  Добро пожаловать, {{ name }}!
+  <br>
+  Ваш уровень допуска {{ access_level }}.
+  <br>
+  Доступные устройства:
+  <br>
+  <ul>
+    {%- for address, state in addresses_states %}
+    {% if state == 1 %}
+    <li><font color="green">{{ address }}</font></li>
+    {% else %}
+    <li><font color="red">{{ address }}</font></li>
+    {% endif %}
+    {% endfor -%}
+  </ul>
+</h1>
+{% endblock %}
