@@ -62,7 +62,7 @@ void writeParameterCharacteristicValues() {
 
 // endless state for failures
 void failureState() {
-  while(1) {
+  while (1) {
     digitalWrite(LED_BUILTIN, HIGH);
     delay(200);
     digitalWrite(LED_BUILTIN, LOW);
@@ -73,14 +73,14 @@ void failureState() {
 void setup() {
   #ifdef DEBUG
   Serial.begin(9600);
-  while(!Serial);
+  while (!Serial);
   #endif
 
   // init led
   pinMode(LED_BUILTIN, OUTPUT);
 
   // check ble init
-  if(!BLE.begin()) {
+  if (!BLE.begin()) {
     #ifdef DEBUG
     Serial.println("# Failed to initialize BLE module!");
     #endif
@@ -144,7 +144,7 @@ void loop() {
   // check connection
   BLE.poll();
 
-  if(central) {
+  if (central) {
     #ifdef DEBUG
     readSensors();
 
@@ -162,7 +162,7 @@ void loop() {
     #endif
 
     // update characteristics
-    while(central.connected()) {
+    while (central.connected()) {
       readSensors();
       writeParameterCharacteristicValues();
 
