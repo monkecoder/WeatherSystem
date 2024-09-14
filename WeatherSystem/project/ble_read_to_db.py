@@ -2,17 +2,16 @@ import asyncio
 import struct
 from datetime import datetime
 
-import psycopg2
 from bleak import BleakClient
 from bleak.exc import BleakDeviceNotFoundError
-from psycopg2 import OperationalError
+from psycopg2 import OperationalError as pc2_OperationalError, connect as pc2_connect
 
 LOOP = asyncio.get_event_loop()
 
 
 def dbConnect():
     """Database connect."""
-    connection = psycopg2.connect(
+    connection = pc2_connect(
         database="weather_system",
         host="localhost",
         user="python_connect",
@@ -64,7 +63,7 @@ async def readParameters(address, i, service_uuid, weather):
                 except OSError:
                     print('Ошибка BLE: устройство отключено\n')
                     weather.addresses_states[i][1] = 0
-                except OperationalError:
+                except pc2_OperationalError:
                     print('Ошибка SQL: прерывание подключения\n')
                     weather.addresses_states[i][1] = 0
                 finally:
@@ -77,7 +76,7 @@ async def readParameters(address, i, service_uuid, weather):
     except OSError:
         print('Ошибка BLE: ошибка системного bluetooth^a\n')
         weather.addresses_states[i][1] = 0
-    except OperationalError:
+    except pc2_OperationalError:
         print('Ошибка SQL: при подключении к БД\n')
         weather.addresses_states[i][1] = 0
     finally:
