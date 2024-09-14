@@ -1,30 +1,25 @@
-###### imports ######
+import threading
+from datetime import datetime
+
+import pandas as pd
 from flask import Flask, render_template, redirect, url_for, request, flash, current_app
-from flask_sqlalchemy import SQLAlchemy
-from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, current_user, login_user, login_required, logout_user
 from flask_sock import Sock
-import pandas as pd
-import numpy as np
-import threading
-from datastruct import DataStruct
-from datetime import datetime
+from flask_sqlalchemy import SQLAlchemy
 from sklearn.linear_model import LinearRegression
+from werkzeug.security import generate_password_hash, check_password_hash
+
+DB = SQLAlchemy()
 
 
-###### init ######
-stop_event = threading.Event()
-db = SQLAlchemy()
-sock = Sock()
-
-
-class Weather(DataStruct):
+class Weather:
     def __init__(self):
         self.weather_current = 'Датчики не подключены'
         self.weather_new = 'Погода не предсказана'
         self.addresses_states = None
 
-weather = Weather()
+
+WEATHER = Weather()
 
 
 def output_parser(listofdicts):
@@ -45,13 +40,16 @@ def output_parser(listofdicts):
         i += 1
     return output
 
+
 def date_toNum(obj):
     cut = str(obj).partition('-')[2].partition('-')[0]
     return int(cut)
 
+
 def time_toNum(obj):
     cut = str(obj).partition(':')[0]
     return int(cut)
+
 
 def predictWeather(hours):
     if hours < 1 or hours > 12:
@@ -59,7 +57,7 @@ def predictWeather(hours):
     else:
         full_reg_result = list()
         for i in range(len(current_app.config['BLE_ADDRESSES'])):
-            df = pd.read_sql(f'value{i}', db.engine, 'id')
+            df = pd.read_sql(f'value{i}', DB.engine, 'id')
             print(df)
 
             cols = df.columns.to_list()
@@ -81,37 +79,37 @@ def predictWeather(hours):
 
             full_reg_result.append(reg_result)
             print(reg_result)
-        
-        weather.weather_new = full_reg_result
+
+        WEATHER.weather_new = full_reg_result
 
         return True
 
 
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    login = db.Column(db.String(1000), unique=True)
-    password = db.Column(db.String(100))
-    access_level = db.Column(db.Integer)
+class User(UserMixin, DB.Model):
+    id = DB.Column(DB.Integer, primary_key=True)
+    login = DB.Column(DB.String(1000), unique=True)
+    password = DB.Column(DB.String(200))
+    access_level = DB.Column(DB.Integer)
 
 
-class UserLog(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    action_date = db.Column(db.DateTime)
-    action_type = db.Column(db.String(100))
+class UserLog(DB.Model):
+    id = DB.Column(DB.Integer, primary_key=True)
+    user_id = DB.Column(DB.Integer, DB.ForeignKey('user.id'))
+    action_date = DB.Column(DB.DateTime)
+    action_type = DB.Column(DB.String(100))
 
 
 def createValues(config):
     addressTables = list()
     for i in range(config):
-        addressTables.append(db.Table(
+        addressTables.append(DB.Table(
             f'value{i}',
-            db.Column('id', db.Integer, primary_key=True),
-            db.Column('date', db.Date),
-            db.Column('time', db.Time),
-            db.Column('temperature', db.Float),
-            db.Column('humidity', db.Float),
-            db.Column('pressure', db.Float),
+            DB.Column('id', DB.Integer, primary_key=True),
+            DB.Column('date', DB.Date),
+            DB.Column('time', DB.Time),
+            DB.Column('temperature', DB.Float),
+            DB.Column('humidity', DB.Float),
+            DB.Column('pressure', DB.Float),
             extend_existing=False
         ))
     return addressTables
@@ -123,26 +121,48 @@ def addUserLog(user_id, action_type):
         action_date=datetime.now().isoformat(),
         action_type=action_type
     )
-    db.session.add(user_log)
+    DB.session.add(user_log)
 
 
-###### create app function ######
+# create app function
+
 def create_app():
     app = Flask(__name__)
     app.config.from_pyfile('config.cfg')
-    db.init_app(app)
+    DB.init_app(app)
 
     login_manager = LoginManager()
     login_manager.login_view = 'login'
     login_manager.init_app(app)
     login_manager.login_message = 'Необходимо войти, чтобы получить доступ к этой странице.'
-    
+
     @login_manager.user_loader
     def load_user(user_id):
         return User.query.get(int(user_id))
 
-    app.use_reloader=False
-    app.debug=False
+    user_sock = Sock()
+    user_sock.init_app(app)
+
+    @user_sock.route('/echo')
+    def echo(sock):
+        while True:
+            data_in = sock.receive()
+            print('sock вход:', data_in)
+
+            if data_in == 'weather_current':
+                try:
+                    sock.send('0_' + output_parser(WEATHER.weather_current))
+                except AttributeError:
+                    sock.send('0_' + 'Датчики не подключены')
+            else:
+                result = predictWeather(int(data_in))
+                if result:
+                    sock.send('1_' + output_parser(WEATHER.weather_new))
+                else:
+                    sock.send('1_' + 'Предсказание невозможно сделать')
+
+    app.use_reloader = False
+    app.debug = False
 
     app.add_url_rule('/', view_func=index)
     app.add_url_rule('/profile', view_func=login_required(profile))
@@ -153,51 +173,35 @@ def create_app():
     app.add_url_rule('/signup', view_func=signup_post, methods=['POST'])
     app.add_url_rule('/logout', view_func=login_required(logout))
 
-    # sock.route('/echo', f=echo)
-    sock.init_app(app)
-
     return app
 
 
-####### index page #######
+# index page
+
 def index():
     return render_template('index.html')
+
 
 def profile():
     return render_template(
         'profile.html',
         name=current_user.login,
         access_level=current_user.access_level,
-        addresses_states=weather.addresses_states
+        addresses_states=WEATHER.addresses_states
     )
 
 
-###### weather ######
+# weather
+
 def weather():
     return render_template('weather.html', access_level=current_user.access_level)
 
-@sock.route('/echo')
-def echo(sock):
-    while True:
-        data_in = sock.receive()
-        print('sock вход:', data_in)
-        
-        if data_in == 'weather_current':
-            try:
-                sock.send('0_' + output_parser(weather.weather_current))
-            except AttributeError:
-                sock.send('0_' + 'Датчики не подключены')
-        else:
-            result = predictWeather(int(data_in))
-            if result:
-                sock.send('1_' + output_parser(weather.weather_new))
-            else:
-                sock.send('1_' + 'Предсказание невозможно сделать')
 
+# auth login
 
-####### auth login #######
 def login():
     return render_template('login.html')
+
 
 def login_post():
     user_login = request.form.get('login')
@@ -213,14 +217,16 @@ def login_post():
     login_user(user, remember=user_remember)
 
     addUserLog(user.id, 'Пользователь вошёл')
-    db.session.commit()
+    DB.session.commit()
 
     return redirect(url_for('profile'))
 
 
-###### auth signup ######
+# auth signup
+
 def signup():
     return render_template('signup.html')
+
 
 def signup_post():
     signup_code = request.form.get('signup_code')
@@ -248,56 +254,59 @@ def signup_post():
 
     if user:
         addUserLog(user.id, 'Попытка создания уже существующего пользователя')
-        db.session.commit()
+        DB.session.commit()
         flash('Такой логин уже существует.', category='wrong_user')
         return redirect(url_for('signup'))
 
-    new_user = User(login=user_login, password=generate_password_hash(user_password, method='sha256'), access_level=1)
-    db.session.add(new_user)
-    db.session.commit()
+    new_user = User(login=user_login,
+                    password=generate_password_hash(user_password, method='pbkdf2'),
+                    access_level=1)
+    DB.session.add(new_user)
+    DB.session.commit()
 
     user = User.query.filter(User.login == user_login).first()
     addUserLog(user.id, 'Пользователь создан')
-    db.session.commit()
+    DB.session.commit()
 
     return redirect(url_for('login'))
 
 
-###### auth logout ######
+# auth logout
+
 def logout():
     addUserLog(current_user.id, 'Пользователь вышел')
-    db.session.commit()
+    DB.session.commit()
     logout_user()
     return redirect(url_for('index'))
 
 
-###### main program ######
 if __name__ == '__main__':
     ws_app = create_app()
     with ws_app.app_context():
         createValues(len(ws_app.config['BLE_ADDRESSES']))
-        db.create_all()
-    
+        DB.create_all()
+
     flask_thread = threading.Thread(target=ws_app.run, daemon=True)
 
     from ble_read_to_db import readAll
+
+    stop_event = threading.Event()
+
     ble_thread = threading.Thread(target=readAll, kwargs={
-        'addresses': ws_app.config['BLE_ADDRESSES'], 
+        'addresses': ws_app.config['BLE_ADDRESSES'],
         'param_service_uuid': ws_app.config['BLE_SERVICE_UUID'],
         'read_delay': 15,
         'stop_event': stop_event,
-        'weather': weather
+        'weather': WEATHER
     })
 
-    weather.addresses_states = list([address, 0] for address in ws_app.config['BLE_ADDRESSES'])
+    WEATHER.addresses_states = [[address, 0] for address in ws_app.config['BLE_ADDRESSES']]
 
     flask_thread.start()
     ble_thread.start()
-    
-    while True:
-        try:
-            sus_in = input()
-            print(sus_in)
-        except KeyboardInterrupt:
-            stop_event.set()
-            exit(0)
+
+    try:
+        while True:
+            input()
+    except KeyboardInterrupt:
+        stop_event.set()

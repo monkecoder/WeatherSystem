@@ -1,18 +1,17 @@
-###### imports ######
 import asyncio
 import struct
 from datetime import datetime
-from bleak.exc import BleakDeviceNotFoundError
-from bleak import BleakClient
+
 import psycopg2
+from bleak import BleakClient
+from bleak.exc import BleakDeviceNotFoundError
 from psycopg2 import OperationalError
 
-from datastruct import DataStruct
-from main import Weather
-loop = asyncio.get_event_loop()
+LOOP = asyncio.get_event_loop()
 
-###### database connect ######
+
 def dbConnect():
+    """Database connect."""
     connection = psycopg2.connect(
         database="weather_system",
         host="localhost",
@@ -23,19 +22,19 @@ def dbConnect():
     return connection
 
 
-###### read characteristic and its descriptor ######
 async def readCharacteristic(device, char):
-        desc = char.descriptors[0]
-        desc_value = await device.read_gatt_descriptor(desc.handle)
+    """Read characteristic and its descriptor."""
+    desc = char.descriptors[0]
+    desc_value = await device.read_gatt_descriptor(desc.handle)
 
-        name = desc_value.decode('utf-8')
-        value = struct.unpack('f', await device.read_gatt_char(char))[0]
+    name = desc_value.decode('utf-8')
+    value = struct.unpack('f', await device.read_gatt_char(char))[0]
 
-        return name, value
+    return name, value
 
 
-###### read all characteristics and their first descriptors in a service ######
 async def readParameters(address, i, service_uuid, weather):
+    """Read all characteristics and their first descriptors in a service."""
     try:
         async with BleakClient(address) as device:
             serv = next(service for service in device.services if service.uuid == service_uuid)
@@ -46,7 +45,7 @@ async def readParameters(address, i, service_uuid, weather):
             cursor = connection.cursor()
             insert_query = f"""insert into value{i} (date, time, temperature, humidity, pressure)
                             values ('%s', '%s', %s, %s, %s);"""
-            
+
             while device.is_connected:
                 try:
                     task_list = list()
@@ -54,7 +53,7 @@ async def readParameters(address, i, service_uuid, weather):
                     param_dict['Date'] = datetime.now().date().isoformat()
                     param_dict['Time'] = datetime.now().time().isoformat()
                     for char in serv.characteristics:
-                        task_list.append(loop.create_task(readCharacteristic(device, char)))
+                        task_list.append(LOOP.create_task(readCharacteristic(device, char)))
                     for task in task_list:
                         name, value = await task
                         param_dict[name] = value
@@ -85,17 +84,17 @@ async def readParameters(address, i, service_uuid, weather):
         await asyncio.sleep(3)
 
 
-###### main function ######
 def readAll(addresses, param_service_uuid, read_delay, stop_event, weather):
+    """Main function, read characteristics in loop."""
     print("Запуск чтения BLE\n")
     while True:
         i = 0
-        weather_current = list()
+        weather_current = []
         for address in addresses:
-            weather_current.append(loop.run_until_complete(readParameters(address, i, param_service_uuid, weather)))
+            weather_current.append(LOOP.run_until_complete(readParameters(address, i, param_service_uuid, weather)))
             print(f'{i}:', weather_current[i], '\n', sep='')
             i += 1
-        
+
         weather.weather_current = weather_current
         stop = stop_event.wait(timeout=read_delay)
         if stop:
